@@ -2,7 +2,7 @@ program solver_n
     implicit none
     integer :: out
     integer :: I,J,K,M,BCL,BCR,BCB,BCT
-    real, allocatable :: dx(:),dy(:),mu(:),eta(:),w(:),SigmaT(:),SigmaS(:),source(:,:)
+    real, allocatable :: dx(:),dy(:),mu(:),eta(:),w(:),SigmaT(:),Sigma1_2(:),source(:,:)
     integer,allocatable :: material(:,:)
     integer :: count0, count1, rate
     real :: diff
@@ -14,10 +14,10 @@ program solver_n
 
     open(newunit=out, file="Sn_bwr_Output", status="replace", action = "write")
     call Version_data(out)
-    call Input_data(out,I,J,K,M,BCL,BCR,BCB,BCT,dx,dy,mu,eta,w,SigmaT,SigmaS,material,source,tol,maxiter)
-    call Input_check(out,I,J,K,M,dx,dy,mu,eta,w,SigmaT,SigmaS,BCL,BCR,BCB,BCT,material,source,tol,maxiter)
-    call Input_echo(out,I,J,K,mu,eta,w,BCL,BCR,BCB,BCT,dx,dy,SigmaT,SigmaS,source,material)
-    call Transport_solver(out,I,J,K,M,dx,dy,mu,eta,w,SigmaT,SigmaS,material,source,tol,maxiter)
+    call Input_data(out,I,J,K,M,BCL,BCR,BCB,BCT,dx,dy,mu,eta,w,SigmaT,Sigma1_2,material,source,tol,maxiter)
+    call Input_check(out,I,J,K,M,dx,dy,mu,eta,w,SigmaT,Sigma1_2,BCL,BCR,BCB,BCT,material,source,tol,maxiter)
+    call Input_echo(out,I,J,K,mu,eta,w,BCL,BCR,BCB,BCT,dx,dy,SigmaT,Sigma1_2,source,material)
+    call Transport_solver(out,I,J,K,M,dx,dy,mu,eta,w,SigmaT,Sigma1_2,material,source,tol,maxiter)
     
     call system_clock(count=count1)
     diff = real(count1-count0)/real(rate)
@@ -40,12 +40,12 @@ program solver_n
     end subroutine Version_data
 
 
-    subroutine Input_data(out,I,J,K,M,BCL,BCR,BCB,BCT,dx,dy,mu,eta,w,SigmaT,SigmaS,material,source,tol,maxiter)
+    subroutine Input_data(out,I,J,K,M,BCL,BCR,BCB,BCT,dx,dy,mu,eta,w,SigmaT,Sigma1_2,material,source,tol,maxiter)
         implicit none
         integer, intent(in) :: out
         integer, intent(out) :: I,J,K,M
         integer,intent(out) :: BCL,BCR,BCB,BCT
-        real, allocatable, intent(out) :: dx(:),dy(:),mu(:),eta(:),w(:),SigmaT(:),SigmaS(:)
+        real, allocatable, intent(out) :: dx(:),dy(:),mu(:),eta(:),w(:),SigmaT(:),Sigma1_2(:)
         integer,allocatable,intent(out) :: material(:,:)
         real,allocatable,intent(out) :: source(:,:)   !Source is a decimal value
         real, intent(out) :: tol
@@ -68,9 +68,9 @@ program solver_n
 
         !Reading # of materials
         read(*,*) M 
-        allocate(SigmaT(M),SigmaS(M))   !We created the array for each X/S of length of materials, and then we fill it out in the order that out input is positioned in (T followed by S)
+        allocate(SigmaT(M),Sigma1_2(M))   !We created the array for each X/S of length of materials, and then we fill it out in the order that our input is positioned in (T followed by S)
         do n=1,M 
-            read(*,*) SigmaT(n),SigmaS(n)
+            read(*,*) SigmaT(n),Sigma1_2(n)
         end do
 
         !Reading BCs
@@ -95,10 +95,10 @@ program solver_n
 
     end subroutine Input_data
 
-    subroutine Input_check(out,I,J,K,M,dx,dy,mu,eta,w,SigmaT,SigmaS,BCL,BCR,BCB,BCT,material,source,tol,maxiter)
+    subroutine Input_check(out,I,J,K,M,dx,dy,mu,eta,w,SigmaT,Sigma1_2,BCL,BCR,BCB,BCT,material,source,tol,maxiter)
         implicit none
         integer :: n,ii,jj
-        real,intent(in) :: dx(:),dy(:),mu(:),eta(:),w(:),SigmaT(:),SigmaS(:), source(:,:)
+        real,intent(in) :: dx(:),dy(:),mu(:),eta(:),w(:),SigmaT(:),Sigma1_2(:), source(:,:)
         integer,intent(in) :: BCL,BCR,BCB,BCT, material(:,:)
         integer, intent(in) :: out,I,J,K,M
         real,intent(in) :: tol
@@ -148,11 +148,11 @@ program solver_n
             write(out,'(a,i0,a,f12.6)') "ERROR: Total X/S less than 0"
             stop 3
             end if
-            if(SigmaS(n) < 0.0) then
+            if(Sigma1_2(n) < 0.0) then
             write(out,'(a,i0,a,f12.6)') "ERROR: Scattering X/S less than 0"
             stop 3
             end if
-            if (SigmaS(n) > SigmaT(n)) then
+            if (Sigma1_2(n) > SigmaT(n)) then
             write(out,'(a,i0,a,f12.6)') "ERROR: Scattering X/S greater than Total X/S"
             stop 3
             end if
@@ -201,11 +201,11 @@ program solver_n
 
     end subroutine Input_check
 
-    subroutine Input_echo(out,I,J,K,mu,eta,w,BCL,BCR,BCB,BCT,dx,dy,SigmaT,SigmaS,source,material)
+    subroutine Input_echo(out,I,J,K,mu,eta,w,BCL,BCR,BCB,BCT,dx,dy,SigmaT,Sigma1_2,source,material)
         implicit none
         integer, intent(in) :: out,I,J,K
         integer, intent(in) :: BCL,BCR,BCB,BCT
-        real, intent(in) :: mu(:),eta(:),w(:),dx(:),dy(:),source(:,:),SigmaT(:),SigmaS(:)
+        real, intent(in) :: mu(:),eta(:),w(:),dx(:),dy(:),source(:,:),SigmaT(:),Sigma1_2(:)
         integer,intent(in) :: material(:,:)
         integer :: n,ii,jj,m
         !We print out some of the necessary input variavles to output file
@@ -224,32 +224,32 @@ program solver_n
         !Write the cell data line
         write(out,'(/,a)') "Computational Cell Data:"
         write(out,'(a3,1x,a3,1x,a8,1x,a10,1x,a10,1x,a10,1x,a10,1x,a10)') &
-         "i", "j", "Material", "dx", "dy","SigmaT","SigmaS","Source"
+         "i", "j", "Material", "dx", "dy","SigmaT","Sigma1_2","Source"
         do jj = 1,J 
             do ii = 1,I 
                 m = material(ii,jj)
                 write(out,'(i3,1x,i3,1x,i8,1x,f10.5,1x,f10.5,1x,f10.5,1x,f10.5,1x,f10.5)') &
-                 ii,jj,m,dx(ii),dy(jj),SigmaT(m),SigmaS(m),source(ii,jj)
+                 ii,jj,m,dx(ii),dy(jj),SigmaT(m),Sigma1_2(m),source(ii,jj)
             end do
         end do
 
     end subroutine Input_echo
 
-    subroutine Transport_solver(out,I,J,K,M,dx,dy,mu,eta,w,SigmaT,SigmaS,material,source,tol,maxiter)
+    subroutine Transport_solver(out,I,J,K,M,dx,dy,mu,eta,w,SigmaT,Sigma1_2,material,source,tol,maxiter)
         implicit none
         integer,intent(in) :: out
         integer, intent(in) :: I,J,K,M,maxiter
-        real, intent(in) :: dx(:), dy(:), mu(:), eta(:), w(:), SigmaT(:), SigmaS(:), source(:,:), tol
+        real, intent(in) :: dx(:), dy(:), mu(:), eta(:), w(:), SigmaT(:), Sigma1_2(:), source(:,:), tol
         integer, intent(in) :: material(:,:)
         real, allocatable :: phi (:,:)
         allocate(phi(I,J))
         write(out,'(/a)') "will solve D.O. here"
 
-        call inner(out,I,J,K,M,dx,dy,mu,eta,w,SigmaT,SigmaS,material,source,maxiter,tol,phi)
+        call inner(out,I,J,K,M,dx,dy,mu,eta,w,SigmaT,Sigma1_2,material,source,maxiter,tol,phi)
 
     end subroutine Transport_solver
 
-    subroutine inner(out,I,J,K,M,dx,dy,mu,eta,w,SigmaT,SigmaS,material,source,maxiter,tol,phi)
+    subroutine inner(out,I,J,K,M,dx,dy,mu,eta,w,SigmaT,Sigma1_2,material,source,maxiter,tol,phi)
         implicit none
         !Input:
         !I,J - number of spatial cells
@@ -259,7 +259,7 @@ program solver_n
         !mu,eta - ordiantes
         !w - weight
         !SigmaT - total X/S
-        !SigmaS - scattering X/S
+        !Sigma1_2 - scattering X/S
         !material - material map
         !source - fixed source in each material cell
         !tol - convergence criterion
@@ -269,7 +269,7 @@ program solver_n
 
         integer,intent(in) :: I,J,K,M,out
         real, intent(in) :: dx(:),dy(:),mu(:),eta(:),w(:)
-        real, intent(in) :: SigmaT(:),SigmaS(:),source(:,:)
+        real, intent(in) :: SigmaT(:),Sigma1_2(:),source(:,:)
         integer, intent(in) :: material(:,:)
         integer, intent(in) :: maxiter
         real, intent(in) :: tol
@@ -287,7 +287,7 @@ program solver_n
             do jj = 1,J
                 do ii = 1,I
                     mm = material(ii,jj)
-                    q(ii,jj) = source(ii,jj) + SigmaS(mm)*phi_old(ii,jj)
+                    q(ii,jj) = source(ii,jj) + Sigma1_2(mm)*phi_old(ii,jj)
                 end do
             end do
 
