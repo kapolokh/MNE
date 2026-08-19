@@ -12,7 +12,7 @@ program solver_n
     call system_clock(count=count0)
     call system_clock(count_rate = rate)
 
-    open(newunit=out, file="Code4_Orig_Output", status="replace", action = "write")
+    open(newunit=out, file="Sn_bwr_Output", status="replace", action = "write")
     call Version_data(out)
     call Input_data(out,I,J,K,M,BCL,BCR,BCB,BCT,dx,dy,mu,eta,w,SigmaT,SigmaS,material,source,tol,maxiter)
     call Input_check(out,I,J,K,M,dx,dy,mu,eta,w,SigmaT,SigmaS,BCL,BCR,BCB,BCT,material,source,tol,maxiter)
