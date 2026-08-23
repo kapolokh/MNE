@@ -1,7 +1,7 @@
 program solver_n
     implicit none
     integer :: out
-    integer :: I,J,K,M,BCL,BCR,BCB,BCT
+    integer :: I,J,K,M,G,BCL,BCR,BCB,BCT
     real, allocatable :: dx(:),dy(:),mu(:),eta(:),w(:),SigmaT(:),Sigma1_2(:),source(:,:)
     integer,allocatable :: material(:,:)
     integer :: count0, count1, rate
@@ -14,7 +14,7 @@ program solver_n
 
     open(newunit=out, file="Sn_bwr_Output", status="replace", action = "write")
     call Version_data(out)
-    call Input_data(out,I,J,K,M,BCL,BCR,BCB,BCT,dx,dy,mu,eta,w,SigmaT,Sigma1_2,material,source,tol,maxiter)
+    call Input_data(out,I,J,K,M,G,BCL,BCR,BCB,BCT,dx,dy,mu,eta,w,SigmaT,Sigma1_2,material,source,tol,maxiter)
     call Input_check(out,I,J,K,M,dx,dy,mu,eta,w,SigmaT,Sigma1_2,BCL,BCR,BCB,BCT,material,source,tol,maxiter)
     call Input_echo(out,I,J,K,mu,eta,w,BCL,BCR,BCB,BCT,dx,dy,SigmaT,Sigma1_2,source,material)
     call Transport_solver(out,I,J,K,M,dx,dy,mu,eta,w,SigmaT,Sigma1_2,material,source,tol,maxiter)
@@ -40,10 +40,10 @@ program solver_n
     end subroutine Version_data
 
 
-    subroutine Input_data(out,I,J,K,M,BCL,BCR,BCB,BCT,dx,dy,mu,eta,w,SigmaT,Sigma1_2,material,source,tol,maxiter)
+    subroutine Input_data(out,I,J,K,M,G,BCL,BCR,BCB,BCT,dx,dy,mu,eta,w,SigmaT,Sigma1_2,material,source,tol,maxiter)
         implicit none
         integer, intent(in) :: out
-        integer, intent(out) :: I,J,K,M
+        integer, intent(out) :: I,J,K,M,G
         integer,intent(out) :: BCL,BCR,BCB,BCT
         real, allocatable, intent(out) :: dx(:),dy(:),mu(:),eta(:),w(:),SigmaT(:),Sigma1_2(:)
         integer,allocatable,intent(out) :: material(:,:)
@@ -66,7 +66,8 @@ program solver_n
             read(*,*) mu(n),eta(n),w(n)
         enddo
 
-        !Reading # of materials
+        !Reading # of materials & groups
+        read(*,*) G
         read(*,*) M 
         allocate(SigmaT(M),Sigma1_2(M))   !We created the array for each X/S of length of materials, and then we fill it out in the order that our input is positioned in (T followed by S)
         do n=1,M 
@@ -76,7 +77,6 @@ program solver_n
         !Reading BCs
         read(*,*) BCL,BCR,BCB,BCT
         
-
         !Create material matrix
         allocate(material(I,J),source(I,J))
         do jj=1,J
