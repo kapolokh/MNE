@@ -327,7 +327,7 @@ write(out,'(/,a,f12.6)') "k-effective = ", keff
                 end do
             end do
             call inner(out,I,J,K,M,dx,dy,mu,eta,w,SigmaT(:,gg),SigmaS_self(:,gg),material,q, &
-                       maxiter,tol,phi(:,:,gg),.false.)
+           maxiter,tol,phi(:,:,gg),.false.,BCL,BCR,BCB,BCT)
         end do
 
         !Updated fission source and k
@@ -362,202 +362,260 @@ write(out,'(/,a,f12.6)') "k-effective = ", keff
 end subroutine Power_iteration
 
 
-    subroutine inner(out,I,J,K,M,dx,dy,mu,eta,w,SigmaT,SigmaS,material,source,maxiter,tol,phi,verbose)
-        implicit none
-        !Input:
-        !I,J - number of spatial cells
-        !K - # of angles per octant
-        !M - # of materials
-        !dx,dy - width of the cell
-        !mu,eta - ordiantes
-        !w - weight
-        !SigmaT - total X/S
-        !SigmaS - total scattering X/S
-        !material - material map
-        !source - fixed source in each material cell
-        !tol - convergence criterion
+   subroutine inner(out,I,J,K,M,dx,dy,mu,eta,w,SigmaT,SigmaS,material,source,maxiter,tol,phi,verbose, &
+                  BCL,BCR,BCB,BCT)
+    implicit none
+    !Input:
+    !I,J - number of spatial cells
+    !K - # of angles per octant
+    !M - # of materials
+    !dx,dy - width of the cell
+    !mu,eta - ordinates
+    !w - weight
+    !SigmaT - total X/S
+    !SigmaS - self-scatter X/S for this group
+    !material - material map
+    !source - fixed source in each material cell
+    !tol - convergence criterion
+    !BCL,BCR,BCB,BCT - boundary flags, 0 = vacuum, 1 = reflective
 
-        !Output:
-        !phi - scalar flux after inner iterations
+    !Output:
+    !phi - scalar flux after inner iterations
 
-        integer,intent(in) :: I,J,K,M,out
-        real, intent(in) :: dx(:),dy(:),mu(:),eta(:),w(:)
-        real, intent(in) :: SigmaT(:),SigmaS(:),source(:,:)
-        integer, intent(in) :: material(:,:)
-        integer, intent(in) :: maxiter
-        real, intent(in) :: tol
-        logical, intent(in) :: verbose
-        real, intent(out) :: phi(:,:)
-        real,allocatable :: phi_old(:,:), q(:,:)
-        real :: diff,maxdiff
-        integer :: ii,jj,mm,it
+    integer,intent(in) :: I,J,K,M,out
+    real, intent(in) :: dx(:),dy(:),mu(:),eta(:),w(:)
+    real, intent(in) :: SigmaT(:),SigmaS(:),source(:,:)
+    integer, intent(in) :: material(:,:)
+    integer, intent(in) :: maxiter
+    real, intent(in) :: tol
+    logical, intent(in) :: verbose
+    integer, intent(in) :: BCL,BCR,BCB,BCT
+    real, intent(out) :: phi(:,:)
+    real,allocatable :: phi_old(:,:), q(:,:)
+    real,allocatable :: leftflux(:,:,:), rightflux(:,:,:), bottomflux(:,:,:), topflux(:,:,:)
+    real :: diff,maxdiff
+    integer :: ii,jj,mm,it
 
-        allocate (phi_old(I,J) , q(I,J))
+    allocate (phi_old(I,J) , q(I,J))
+    allocate (leftflux(4,K,J), rightflux(4,K,J), bottomflux(4,K,I), topflux(4,K,I))
+    leftflux = 0.0
+    rightflux = 0.0
+    bottomflux = 0.0
+    topflux = 0.0
 
-        phi_old = 0.0d0
-        phi = 0.0d0
+    phi_old = 0.0d0
+    phi = 0.0d0
 
-        do it = 1,maxiter
-            do jj = 1,J
-                do ii = 1,I
-                    mm = material(ii,jj)
-                    q(ii,jj) = source(ii,jj) + SigmaS(mm)*phi_old(ii,jj)
-                end do
+    do it = 1,maxiter
+        do jj = 1,J
+            do ii = 1,I
+                mm = material(ii,jj)
+                q(ii,jj) = source(ii,jj) + SigmaS(mm)*phi_old(ii,jj)
             end do
-
-            call sweep(I,J,K,M,dx,dy,mu,eta,w,SigmaT,material,q,phi)
-
-            maxdiff = 0.0d0
-
-            do jj = 1,J
-                do ii = 1,I
-                    if (phi_old(ii,jj) /= 0.0d0) then
-                        diff = abs(phi(ii,jj)/phi_old(ii,jj)-1.0d0)
-                    else
-                        diff = abs(phi(ii,jj) - phi_old(ii,jj))
-                    end if
-                    if (diff > maxdiff) then
-                        maxdiff = diff
-                    end if
-                end do
-            end do
-
-            if (maxdiff <= tol) then
-                if (verbose) then
-                    write(out,'(/,a)') "Inner iterations converged successfully."
-                    write(out,'(a,i6)') "Iterations consumed:", it
-                    write(out,'(a,1x,es12.5)') "Convergence criterion achieved:", maxdiff
-                end if
-                exit
-            end if
-
-            if (it == maxiter) then
-                if (verbose) then
-                    write(out,'(/,a)') "Inner iterations terminated unsuccessfully."
-                    write(out,'(a,i6)') "Iterations consumed:", it
-                    write(out,'(a,1x,es12.5)') "Convergence criterion achieved:", maxdiff
-                end if
-                exit
-            end if
-
-            phi_old = phi
         end do
 
-        if (verbose) then
+        call sweep(I,J,K,M,dx,dy,mu,eta,w,SigmaT,material,q,phi,BCL,BCR,BCB,BCT, &
+                   leftflux,rightflux,bottomflux,topflux)
 
-            write(out,'(/,a)') "Discrete Ordinates Method Solution"
-            write(out,'(a3,1x,a3,1x,a26)') "i","j","Cell-Averaged Scalar Flux"
+        maxdiff = 0.0d0
 
-            do jj = 1,J
-                do ii = 1,I
-                    write(out,'(i3,1x,i3,1x,es16.8)') ii,jj,phi(ii,jj)
-                end do
+        do jj = 1,J
+            do ii = 1,I
+                if (phi_old(ii,jj) /= 0.0d0) then
+                    diff = abs(phi(ii,jj)/phi_old(ii,jj)-1.0d0)
+                else
+                    diff = abs(phi(ii,jj) - phi_old(ii,jj))
+                end if
+                if (diff > maxdiff) then
+                    maxdiff = diff
+                end if
             end do
+        end do
+
+        if (maxdiff <= tol) then
+            if (verbose) then
+                write(out,'(/,a)') "Inner iterations converged successfully."
+                write(out,'(a,i6)') "Iterations consumed:", it
+                write(out,'(a,1x,es12.5)') "Convergence criterion achieved:", maxdiff
+            end if
+            exit
         end if
-        
-    end subroutine inner 
 
+        if (it == maxiter) then
+            if (verbose) then
+                write(out,'(/,a)') "Inner iterations terminated unsuccessfully."
+                write(out,'(a,i6)') "Iterations consumed:", it
+                write(out,'(a,1x,es12.5)') "Convergence criterion achieved:", maxdiff
+            end if
+            exit
+        end if
 
-    subroutine sweep(I,J,K,M,dx,dy,mu,eta,w,SigmaT,material,source,phi)
-        implicit none
-        integer, intent(in) :: I,J,K,M
-        real, intent(in) :: dx(:), dy(:), mu(:), eta(:), w(:), SigmaT(:), source(:,:)
-        integer, intent(in) :: material(:,:)
-        real, intent(out) :: phi(:,:)
-        real,allocatable :: xbound(:,:), ybound(:,:)
-        real :: mun, etan
-        real :: psi
-        real :: psi_x_in
-        real :: psi_y_in
-        real :: psi_x_out
-        real :: psi_y_out
-        integer :: mat 
-        integer :: quad
-        integer :: j_start, j_end, j_step,i_start, i_end, i_step
-        integer :: n,ii,jj
-        
-        allocate(xbound(0:I,J),ybound(I,0:J))
-        phi = 0.0
+        phi_old = phi
+    end do
 
-        !Adjust ordiante signs depending on direction of the sweep
-        !Do sweep in 4 directions to get all particles travelling in all directions in mesh.
-        do quad = 1,4
-            do n = 1,K
-                select case(quad)
-                case(1)
-                    mun = mu(n)
-                    etan = eta(n)
-                case(2)
-                    mun = -mu(n)
-                    etan = eta(n)
-                case(3)
-                    mun = mu(n)
-                    etan = -eta(n)
-                case(4)
-                    mun = -mu(n)
-                    etan = -eta(n)
-                end select
-
-                !Define starting and ending positions for the sweep
-                if (mun > 0.0) then
-                    i_start = 1
-                    i_end = I
-                    i_step = 1
-                else
-                    i_start = I
-                    i_end = 1
-                    i_step = -1
-                end if
-
-                if (etan > 0.0) then
-                    j_start = 1
-                    j_end = J
-                    j_step = 1
-                else
-                    j_start = J
-                    j_end = 1
-                    j_step = -1
-                end if
-
-                xbound = 0.0
-                ybound = 0.0
-                do jj = j_start,j_end,j_step
-                    do ii = i_start,i_end, i_step
-                        !Define incoming fluxes into cells
-                        if (mun > 0.0) then
-                            psi_x_in = xbound(ii-1,jj)
-                        else
-                            psi_x_in = xbound(ii,jj)
-                        end if
-                        if (etan > 0.0) then
-                            psi_y_in = ybound(ii,jj-1)
-                        else
-                            psi_y_in = ybound(ii,jj)
-                        end if
-
-                        mat = material(ii,jj)
-
-                        call ddsolve(mun,etan,dx(ii),dy(jj),SigmaT(mat),psi_x_in,psi_y_in,psi_x_out,psi_y_out,psi,source(ii,jj))
-                        
-                        !Each sweep adds to value of scalar flux
-                        phi(ii,jj) = phi(ii,jj) + w(n)*psi
-                        
-                        !Define outgoing fluxes out of the cells
-                        if (mun > 0.0) then
-                            xbound(ii,jj) = psi_x_out
-                        else
-                            xbound(ii-1,jj) = psi_x_out
-                        end if
-                        if (etan > 0.0) then
-                            ybound(ii,jj) = psi_y_out
-                        else
-                            ybound(ii,jj-1) = psi_y_out
-                        end if
-                    end do
-                end do
+    if (verbose) then
+        write(out,'(/,a)') "Discrete Ordinates Method Solution"
+        write(out,'(a3,1x,a3,1x,a26)') "i","j","Cell-Averaged Scalar Flux"
+        do jj = 1,J
+            do ii = 1,I
+                write(out,'(i3,1x,i3,1x,es16.8)') ii,jj,phi(ii,jj)
             end do
         end do
-    end subroutine sweep
+    end if
+
+end subroutine inner 
+
+
+    subroutine sweep(I,J,K,M,dx,dy,mu,eta,w,SigmaT,material,source,phi,BCL,BCR,BCB,BCT, &
+                  leftflux,rightflux,bottomflux,topflux)
+    implicit none
+    integer, intent(in) :: I,J,K,M
+    real, intent(in) :: dx(:), dy(:), mu(:), eta(:), w(:), SigmaT(:), source(:,:)
+    integer, intent(in) :: material(:,:)
+    integer, intent(in) :: BCL,BCR,BCB,BCT
+    real, intent(out) :: phi(:,:)
+    real, intent(inout) :: leftflux(:,:,:), rightflux(:,:,:), bottomflux(:,:,:), topflux(:,:,:)
+    !leftflux/rightflux dims: (quad,n,jj)   bottomflux/topflux dims: (quad,n,ii)
+    real,allocatable :: xbound(:,:), ybound(:,:)
+    real :: mun, etan
+    real :: psi
+    real :: psi_x_in
+    real :: psi_y_in
+    real :: psi_x_out
+    real :: psi_y_out
+    integer :: mat
+    integer :: quad, qx, qy
+    integer :: j_start, j_end, j_step,i_start, i_end, i_step
+    integer :: n,ii,jj
+
+    allocate(xbound(0:I,J),ybound(I,0:J))
+    phi = 0.0
+
+    !Adjust ordinate signs depending on direction of the sweep
+    !Do sweep in 4 directions to get all particles travelling in all directions in mesh.
+    !qx/qy identify which quadrant reflects into this one across the x/y boundary
+    do quad = 1,4
+        do n = 1,K
+            select case(quad)
+            case(1)
+                mun = mu(n)
+                etan = eta(n)
+                qx = 2
+                qy = 3
+            case(2)
+                mun = -mu(n)
+                etan = eta(n)
+                qx = 1
+                qy = 4
+            case(3)
+                mun = mu(n)
+                etan = -eta(n)
+                qx = 4
+                qy = 1
+            case(4)
+                mun = -mu(n)
+                etan = -eta(n)
+                qx = 3
+                qy = 2
+            end select
+
+            !Define starting and ending positions for the sweep
+            if (mun > 0.0) then
+                i_start = 1
+                i_end = I
+                i_step = 1
+            else
+                i_start = I
+                i_end = 1
+                i_step = -1
+            end if
+
+            if (etan > 0.0) then
+                j_start = 1
+                j_end = J
+                j_step = 1
+            else
+                j_start = J
+                j_end = 1
+                j_step = -1
+            end if
+
+            xbound = 0.0
+            ybound = 0.0
+
+            !Reflective inflow at the domain edge: use the reflected quadrant's
+            !exiting flux, saved from its most recent sweep, only where the
+            !relevant BC flag is 1. Otherwise stays 0.0 (vacuum).
+            if (mun > 0.0 .and. BCL == 1) then
+                do jj=1,J
+                    xbound(0,jj) = leftflux(qx,n,jj)
+                end do
+            else if (mun < 0.0 .and. BCR == 1) then
+                do jj=1,J
+                    xbound(I,jj) = rightflux(qx,n,jj)
+                end do
+            end if
+
+            if (etan > 0.0 .and. BCB == 1) then
+                do ii=1,I
+                    ybound(ii,0) = bottomflux(qy,n,ii)
+                end do
+            else if (etan < 0.0 .and. BCT == 1) then
+                do ii=1,I
+                    ybound(ii,J) = topflux(qy,n,ii)
+                end do
+            end if
+
+            do jj = j_start,j_end,j_step
+                do ii = i_start,i_end, i_step
+                    !Define incoming fluxes into cells
+                    if (mun > 0.0) then
+                        psi_x_in = xbound(ii-1,jj)
+                    else
+                        psi_x_in = xbound(ii,jj)
+                    end if
+                    if (etan > 0.0) then
+                        psi_y_in = ybound(ii,jj-1)
+                    else
+                        psi_y_in = ybound(ii,jj)
+                    end if
+
+                    mat = material(ii,jj)
+
+                    call ddsolve(mun,etan,dx(ii),dy(jj),SigmaT(mat),psi_x_in,psi_y_in,psi_x_out,psi_y_out,psi,source(ii,jj))
+
+                    !Each sweep adds to value of scalar flux
+                    phi(ii,jj) = phi(ii,jj) + w(n)*psi
+
+                    !Define outgoing fluxes out of the cells
+                    if (mun > 0.0) then
+                        xbound(ii,jj) = psi_x_out
+                    else
+                        xbound(ii-1,jj) = psi_x_out
+                    end if
+                    if (etan > 0.0) then
+                        ybound(ii,jj) = psi_y_out
+                    else
+                        ybound(ii,jj-1) = psi_y_out
+                    end if
+                end do
+            end do
+
+            !Save this quadrant's exiting boundary flux for the next sweep() call
+            if (mun > 0.0) then
+                rightflux(quad,n,:) = xbound(I,:)
+            else
+                leftflux(quad,n,:) = xbound(0,:)
+            end if
+            if (etan > 0.0) then
+                topflux(quad,n,:) = ybound(:,J)
+            else
+                bottomflux(quad,n,:) = ybound(:,0)
+            end if
+
+        end do
+    end do
+end subroutine sweep
 
     subroutine ddsolve(mu,eta,dx,dy,Sigma_T,psi_x_in,psi_y_in,psi_x_out,psi_y_out,psi,q)
     !   Inputs:
