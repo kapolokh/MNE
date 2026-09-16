@@ -287,7 +287,7 @@ write(out,'(/,a,f12.6)') "k-effective = ", keff
                         write(out,'(i3,1x,i3,1x,i8,1x,i5,1x,f10.5,1x,f10.5,1x,f10.5,1x,f10.5,1x,f10.5,1x,f10.5,1x,f10.5)') &
                         ii,jj,m,gg,dx(ii),dy(jj),SigmaT(m,gg),SigmaA(m,gg),nuSigmaF(m,gg),Sigma1_2(m,gg)
                     end do
-            end do
+            end do ,mk
         end do
 
     end subroutine Input_echo
