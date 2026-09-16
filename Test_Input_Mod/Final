@@ -2,9 +2,9 @@ Transport Solver
 Version 4.0
 Kirill Polokhalo
 Date:
-20260914                        
+20260915                        
 Time:
-193255.418                      
+185205.432                      
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 Input has been read, variables assigned, matrices created
 
@@ -627,4 +627,4 @@ Group 2
 
 k-effective =     1.084472
 
-Run Time (s):    0.2260
+Run Time (s):    0.3410

@@ -39,8 +39,7 @@ program solver_n
             end do
         end do
     end do
-write(out,'(/,a,f12.6)') "k-effective = ", keff
-
+    write(out,'(/,a,f12.6)') "k-effective = ", keff
 
 
     call system_clock(count=count1)
