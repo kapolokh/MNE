@@ -8,7 +8,7 @@ program solver_n
     real :: keff
     real :: diff
     real :: toli, tolo
-    real :: h
+    integer :: h
     integer :: maxinner,maxouter
     integer :: ii,jj,gg
     character(len=100) :: fname
@@ -21,7 +21,8 @@ program solver_n
     call Version_data(out)
     fname = 'dummy_input.txt'
     call read_input(fname,out,in,I,J,K,G,M,h,BCL,BCR,BCB,BCT,dx,dy,mu,eta,w, & 
-                            SigmaT,SigmaA,nuSigmaF,Sigma1_2,material,toli,tolo,maxinner,maxouter)
+                            SigmaT,SigmaA,nuSigmaF,Sigma1_2,material,toli,tolo,maxinner,maxouter)                        
+    call refine_grid(I,J,h,out,material,dx,dy)
     call Input_check(out,I,J,K,M,G,dx,dy,mu,eta,w,SigmaT,SigmaA,BCL,BCR,BCB,BCT,material,toli,maxinner)
     call Input_echo(out,I,J,K,G,mu,eta,w,BCL,BCR,BCB,BCT,dx,dy,SigmaT,SigmaA,nuSigmaF,Sigma1_2,material)
 
@@ -74,7 +75,7 @@ program solver_n
 
     integer, intent(in) :: out
     integer, intent(out) :: I,J,K,G,M
-    real,intent(out) :: h
+    integer,intent(out) :: h
     integer,intent(out) :: BCL,BCR,BCB,BCT
     real, allocatable, intent(out) :: dx(:),dy(:),mu(:),eta(:),w(:)
     real, allocatable, intent(out) :: SigmaT(:,:),SigmaA(:,:),nuSigmaF(:,:),Sigma1_2(:,:)
@@ -149,7 +150,61 @@ program solver_n
 
     end subroutine read_input
 
-    
+    subroutine refine_grid(I,J,h,out,material,dx,dy)
+        implicit none
+
+        integer :: ii,jj,hh,iifine,jjfine,hi,hj
+        integer :: I_new, J_new
+        real,allocatable :: dxnew(:),dynew(:)
+        real,allocatable :: mat_new(:,:)
+
+        integer, intent(inout) :: I,J
+        integer, intent(in) :: h
+        integer, intent(inout) :: out
+        integer,allocatable,intent(inout) :: material(:,:)
+        real, allocatable,intent(inout) :: dx(:),dy(:)
+
+
+        I_new=I*h
+        J_new=J*h
+        allocate(dxnew(I_new))
+        allocate(dynew(J_new))
+        allocate(mat_new(I_new,J_new))
+
+
+        do ii=1,I
+            do hh=1,h
+                iifine=(ii-1)*h+hh
+                dxnew(iifine)=dx(ii)/h
+            enddo
+        enddo
+
+        do jj=1,J
+            do hh=1,h
+                jjfine=(jj-1)*h+hh
+                dynew(jjfine)=dy(jj)/h
+            enddo
+        enddo
+
+        do ii=1,I
+            do jj=1,J
+                do hi=1,h
+                    do hj=1,h
+                        iifine=(ii-1)*h+hi
+                        jjfine=(jj-1)*h+hj
+                        mat_new(iifine,jjfine)=material(ii,jj)
+                    enddo
+                enddo
+            enddo
+        enddo
+
+        I=I_new
+        J=J_new
+        dx=dxnew
+        dy=dynew
+        material=mat_new
+
+    end subroutine refine_grid 
 
     subroutine Input_check(out,I,J,K,M,G,dx,dy,mu,eta,w,SigmaT,SigmaA,BCL,BCR,BCB,BCT,material,toli,maxinner)
         implicit none
