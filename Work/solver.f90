@@ -1,15 +1,17 @@
 program solver_n
     implicit none
-    integer :: out
+    integer :: out, in
     integer :: I,J,K,M,G,BCL,BCR,BCB,BCT
     real, allocatable :: dx(:),dy(:),mu(:),eta(:),w(:),SigmaT(:,:),SigmaA(:,:),SigmaS(:,:),nuSigmaF(:,:),Sigma1_2(:,:),phi(:,:,:)
     integer,allocatable :: material(:,:)
     integer :: count0, count1, rate
     real :: keff
     real :: diff
-    real :: tol, tolk
-    integer :: maxiter,maxouter
+    real :: toli, tolo
+    integer :: h
+    integer :: maxinner,maxouter
     integer :: ii,jj,gg
+    character(len=100) :: fname
 
 
     call system_clock(count=count0)
@@ -17,13 +19,16 @@ program solver_n
 
     open(newunit=out, file="Final", status="replace", action = "write")
     call Version_data(out)
-    call Input_data(out,I,J,K,M,G,BCL,BCR,BCB,BCT,dx,dy,mu,eta,w,SigmaT,SigmaA,SigmaS,nuSigmaF,Sigma1_2,material,tol,maxiter)
-    call Input_check(out,I,J,K,M,G,dx,dy,mu,eta,w,SigmaT,SigmaA,SigmaS,BCL,BCR,BCB,BCT,material,tol,maxiter)
-    call Input_echo(out,I,J,K,G,mu,eta,w,BCL,BCR,BCB,BCT,dx,dy,SigmaT,SigmaS,SigmaA,nuSigmaF,Sigma1_2,material)
+    fname = 'dummy_input.txt'
+    call read_input(fname,out,in,I,J,K,G,M,h,BCL,BCR,BCB,BCT,dx,dy,mu,eta,w, & 
+                            SigmaT,SigmaA,nuSigmaF,Sigma1_2,material,toli,tolo,maxinner,maxouter)                        
+    call refine_grid(I,J,h,out,material,dx,dy)
+    call Input_check(out,I,J,K,M,G,dx,dy,mu,eta,w,SigmaT,SigmaA,BCL,BCR,BCB,BCT,material,toli,maxinner)
+    call Input_echo(out,I,J,K,G,mu,eta,w,BCL,BCR,BCB,BCT,dx,dy,SigmaT,SigmaA,nuSigmaF,Sigma1_2,material)
 
     allocate(phi(I,J,G))
 
-    call Power_iteration(out,I,J,K,M,G,dx,dy,mu,eta,w,SigmaT,SigmaA,Sigma1_2,nuSigmaF,material,tol,maxiter,tolk,maxouter,phi,keff)
+    call Power_iteration(out,I,J,K,M,G,dx,dy,mu,eta,w,SigmaT,SigmaA,Sigma1_2,nuSigmaF,material,toli,maxinner,tolo,maxouter,phi,keff)
 
     write(out,'(/,a)') "Discrete Ordinates Method Solution"
     do gg=1,G
@@ -35,8 +40,7 @@ program solver_n
             end do
         end do
     end do
-write(out,'(/,a,f12.6)') "k-effective = ", keff
-
+    write(out,'(/,a,f12.6)') "k-effective = ", keff
 
 
     call system_clock(count=count1)
@@ -59,76 +63,157 @@ write(out,'(/,a,f12.6)') "k-effective = ", keff
         write(out,'(a)') "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"
     end subroutine Version_data
 
+    subroutine read_input(fname,out,in,I,J,K,G,M,h,BCL,BCR,BCB,BCT,dx,dy,mu,eta,w, &
+                    SigmaT,SigmaA,nuSigmaF,Sigma1_2,material,toli,tolo,maxinner,maxouter) ! fname holds the name of the file is it supposed to open, e.g. 'dummy_input.txt'
+    implicit none
+    character(len=*), intent(in) :: fname 
+    character(len=300) :: line
+    character(len=20) :: card
+    logical :: ifxst
+    integer :: c,ii,jj,kk,mm,o
+    integer :: in
 
-    subroutine Input_data(out,I,J,K,M,G,BCL,BCR,BCB,BCT,dx,dy,mu,eta,w,SigmaT,SigmaA,SigmaS,nuSigmaF,Sigma1_2,material,tol,maxiter)
+    integer, intent(in) :: out
+    integer, intent(out) :: I,J,K,G,M
+    integer,intent(out) :: h
+    integer,intent(out) :: BCL,BCR,BCB,BCT
+    real, allocatable, intent(out) :: dx(:),dy(:),mu(:),eta(:),w(:)
+    real, allocatable, intent(out) :: SigmaT(:,:),SigmaA(:,:),nuSigmaF(:,:),Sigma1_2(:,:)
+    integer,allocatable,intent(out) :: material(:,:)
+    real, intent(out) :: toli,tolo
+    integer, intent(out) :: maxinner,maxouter
+
+   !--- check if input file exists
+    inquire(file=fname, exist=ifxst)
+    if (.not.ifxst) stop 'input does not exist'
+
+   !--- open input file for reading
+    open(newunit=in,file=fname,status='old', action='read')
+
+    do 
+        read(in,'(a)',end=300) line 
+
+        c=index(line,'#')   !reads at what index in the line # lies
+        if (c.gt.0) line(c:)=''  !if line does not start with #, it means that there are comments after, so string is replaced by empty after that #
+        if (line.eq.' ') cycle
+
+        read(line,*) card   !reads the first word before the blank
+
+        if (card.eq.'ncell') then
+            read (line,*) card, I, J
+            allocate(dx(I),dy(J))
+        elseif (card.eq.'xdim') then
+            read(line,*) card, (dx(ii), ii=1,I)
+        elseif (card.eq.'ydim') then
+            read(line,*) card, (dy(jj), jj=1,J)
+        elseif(card.eq.'ndir') then
+            read(line,*) card, K
+            allocate(mu(K),eta(K),w(K))
+        elseif(card.eq.'mu') then
+            read(line,*) card, (mu(kk), kk=1,K)
+        elseif(card.eq.'eta') then
+            read(line,*) card, (eta(kk), kk=1,K)
+        elseif(card.eq.'w') then
+            read(line,*) card, (w(kk), kk=1,K)
+        elseif (card.eq.'h') then
+            read(line,*) card, h
+        elseif (card.eq.'bc') then
+            read(line,*) card, BCL,BCR,BCB,BCT
+        elseif (card.eq.'ngroup') then
+            read(line,*) card, G
+        elseif (card.eq.'nmat') then
+            read(line,*) card, M
+            allocate(SigmaT(M,G),SigmaA(M,G),nuSigmaF(M,G),Sigma1_2(M,G))
+        elseif (card.eq.'siga') then
+            read(line,*) card, o, (SigmaA(mm,o), mm=1,M)
+        elseif (card.eq.'nusigf') then
+            read(line,*) card, o, (nuSigmaF(mm,o), mm=1,M)
+        elseif (card.eq.'sigt') then
+            read(line,*) card, o, (SigmaT(mm,o), mm=1,M)
+        elseif (card.eq.'sig1_2') then
+            read(line,*) card, o, (Sigma1_2(mm,o), mm=1,M)
+        elseif (card.eq.'matmap') then
+            allocate(material(I,J))
+            do jj=1,J
+                read(in,*) (material(ii,jj), ii=1,I)
+            enddo
+        elseif(card.eq.'tol') then
+            read(line,*) card, toli, tolo
+        elseif(card.eq.'maxiter') then
+            read(line,*) card, maxinner, maxouter
+        endif
+    enddo
+    300 continue 
+    close(in)
+
+    write(out,'(a)') "Input has been read, variables assigned, matrices created"
+
+    end subroutine read_input
+
+    subroutine refine_grid(I,J,h,out,material,dx,dy)
         implicit none
-        integer, intent(in) :: out
-        integer, intent(out) :: I,J,K,M,G
-        integer,intent(out) :: BCL,BCR,BCB,BCT
-        real, allocatable, intent(out) :: dx(:),dy(:),mu(:),eta(:),w(:),SigmaT(:,:), & 
-        SigmaA(:,:),SigmaS(:,:),nuSigmaF(:,:),Sigma1_2(:,:)
-        integer,allocatable,intent(out) :: material(:,:)
-        real, intent(out) :: tol
-        integer, intent(out) :: maxiter
-        integer :: n,ii,jj,gg
 
-        !Reading size of mesh and preallocating the matrix 
-        read(*,*) I,J
-        allocate(dx(I), dy(J)) 
-        !Creating cells in matrix in y and x direction
-        read(*,*) (dx(ii), ii=1,I)
-        read(*,*) (dy(jj), jj=1,J)
-        
-        !Reading # of angles per octant and allocating vectors that will be of this size
-        read(*,*) K 
-        allocate(mu(K),eta(K),w(K))
-        do n=1,K                        !We might have more than 1 angle, so we make it dependable on K. So far we only have one of each mu etc, but this should work for any #, hence the loop
-            read(*,*) mu(n),eta(n),w(n)
+        integer :: ii,jj,hh,iifine,jjfine,hi,hj
+        integer :: I_new, J_new
+        real,allocatable :: dxnew(:),dynew(:)
+        real,allocatable :: mat_new(:,:)
+
+        integer, intent(inout) :: I,J
+        integer, intent(in) :: h
+        integer, intent(inout) :: out
+        integer,allocatable,intent(inout) :: material(:,:)
+        real, allocatable,intent(inout) :: dx(:),dy(:)
+
+
+        I_new=I*h
+        J_new=J*h
+        allocate(dxnew(I_new))
+        allocate(dynew(J_new))
+        allocate(mat_new(I_new,J_new))
+
+
+        do ii=1,I
+            do hh=1,h
+                iifine=(ii-1)*h+hh
+                dxnew(iifine)=dx(ii)/h
+            enddo
         enddo
 
-        !Reading # of materials & groups
-        read(*,*) G
-        read(*,*) M 
-        allocate(SigmaT(M,G),SigmaA(M,G),nuSigmaF(M,G),Sigma1_2(M,G))   !We created the array for each X/S of length of materials, and then we fill it out in the order that our input is positioned in (T followed by S)
-        do n=1,M 
-            do gg=1,G
-                read(*,*) SigmaT(n,gg),SigmaA(n,gg),nuSigmaF(n,gg),Sigma1_2(n,gg)
-            end do
-        end do
-
-        !Create/Calculate in-group scattering cross-section
-        allocate(SigmaS(M,G))
-        do n=1,M 
-            do gg=1,G
-                SigmaS(n,gg)= SigmaT(n,gg)-SigmaA(n,gg)
-            end do
-        end do
-
-        !Reading BCs
-        read(*,*) BCL,BCR,BCB,BCT
-        
-        !Create material matrix
-        allocate(material(I,J))
         do jj=1,J
-            read(*,*) (material(ii,jj), ii=1,I)    !Could not do a nested loop, therefore did this trick since read function only reads horizontally all characters on the line.
-        end do
+            do hh=1,h
+                jjfine=(jj-1)*h+hh
+                dynew(jjfine)=dy(jj)/h
+            enddo
+        enddo
 
-        !Read convergence criteria
-        read(*,*) tol,maxiter
-        read(*,*) tolk,maxouter
+        do ii=1,I
+            do jj=1,J
+                do hi=1,h
+                    do hj=1,h
+                        iifine=(ii-1)*h+hi
+                        jjfine=(jj-1)*h+hj
+                        mat_new(iifine,jjfine)=material(ii,jj)
+                    enddo
+                enddo
+            enddo
+        enddo
 
-        write(out,'(a)') "Input has been read, variables assigned, matrices created"
+        I=I_new
+        J=J_new
+        dx=dxnew
+        dy=dynew
+        material=mat_new
 
-    end subroutine Input_data
+    end subroutine refine_grid 
 
-    subroutine Input_check(out,I,J,K,M,G,dx,dy,mu,eta,w,SigmaT,SigmaA,SigmaS,BCL,BCR,BCB,BCT,material,tol,maxiter)
+    subroutine Input_check(out,I,J,K,M,G,dx,dy,mu,eta,w,SigmaT,SigmaA,BCL,BCR,BCB,BCT,material,toli,maxinner)
         implicit none
         integer :: n,ii,jj,gg
-        real,intent(in) :: dx(:),dy(:),mu(:),eta(:),w(:),SigmaT(:,:),SigmaA(:,:),SigmaS(:,:)
+        real,intent(in) :: dx(:),dy(:),mu(:),eta(:),w(:),SigmaT(:,:),SigmaA(:,:)
         integer,intent(in) :: BCL,BCR,BCB,BCT, material(:,:)
         integer, intent(in) :: out,I,J,K,M,G
-        real,intent(in) :: tol
-        integer,intent(in) :: maxiter
+        real,intent(in) :: toli
+        integer,intent(in) :: maxinner
         
         !Input Dimension Check
         if (J <= 0 .or. I <= 0) then
@@ -182,15 +267,7 @@ write(out,'(/,a,f12.6)') "k-effective = ", keff
                 if(SigmaA(n,gg) < 0.0) then
                 write(out,'(a,i0,a,f12.6)') "ERROR: Absorption X/S less than 0"
                 stop 3
-                end if
-                if(SigmaS(n,gg) < 0.0) then
-                write(out,'(a,i0,a,f12.6)') "ERROR: Scattering X/S less than 0"
-                stop 3
-                end if
-                if (SigmaS(n,gg) > SigmaT(n,gg)) then
-                write(out,'(a,i0,a,f12.6)') "ERROR: Scattering X/S greater than Total X/S"
-                stop 3
-                end if
+                end if 
             end do
         end do
 
@@ -221,23 +298,23 @@ write(out,'(/,a,f12.6)') "k-effective = ", keff
             end do
         end do
         
-        if (tol <= 0.0d0) then
+        if (toli <= 0.0d0) then
             write(out,'(a)') "Error: convergence criterion must be greater than 0"
             stop 7
         end if
 
-        if (maxiter < 1 ) then
+        if (maxinner < 1 ) then
             write(out,'(a)') "Error: maximum # of iterations has to be grater than 1"
             stop 8
         end if
 
     end subroutine Input_check
 
-    subroutine Input_echo(out,I,J,K,G,mu,eta,w,BCL,BCR,BCB,BCT,dx,dy,SigmaT,SigmaS,SigmaA,nuSigmaF,Sigma1_2,material)
+    subroutine Input_echo(out,I,J,K,G,mu,eta,w,BCL,BCR,BCB,BCT,dx,dy,SigmaT,SigmaA,nuSigmaF,Sigma1_2,material)
         implicit none
         integer, intent(in) :: out,I,J,K,G
         integer, intent(in) :: BCL,BCR,BCB,BCT
-        real, intent(in) :: mu(:),eta(:),w(:),dx(:),dy(:),SigmaT(:,:),SigmaS(:,:),SigmaA(:,:),nuSigmaF(:,:),Sigma1_2(:,:)
+        real, intent(in) :: mu(:),eta(:),w(:),dx(:),dy(:),SigmaT(:,:),SigmaA(:,:),nuSigmaF(:,:),Sigma1_2(:,:)
         integer,intent(in) :: material(:,:)
         integer :: n,ii,jj,m,gg
         !We print out some of the necessary input variables to output file
@@ -256,13 +333,13 @@ write(out,'(/,a,f12.6)') "k-effective = ", keff
         !Write the cell data line
         write(out,'(/,a)') "Computational Cell Data:"
         write(out,'(a3,1x,a3,1x,a8,1x,a5,1x,a10,1x,a10,1x,a10,1x,a10,1x,a10,1x,a10,1x,a10)') &
-        "i", "j", "Material", "Group", "dx", "dy", "SigmaT", "SigmaA", "SigmaS", "nuSigmaF", "Sigma1_2"
+        "i", "j", "Material", "Group", "dx", "dy", "SigmaT", "SigmaA", "nuSigmaF", "Sigma1_2"
         do jj = 1,J
             do ii = 1,I
                 m = material(ii,jj)
                     do gg = 1,G
                         write(out,'(i3,1x,i3,1x,i8,1x,i5,1x,f10.5,1x,f10.5,1x,f10.5,1x,f10.5,1x,f10.5,1x,f10.5,1x,f10.5)') &
-                        ii,jj,m,gg,dx(ii),dy(jj),SigmaT(m,gg),SigmaA(m,gg),SigmaS(m,gg),nuSigmaF(m,gg),Sigma1_2(m,gg)
+                        ii,jj,m,gg,dx(ii),dy(jj),SigmaT(m,gg),SigmaA(m,gg),nuSigmaF(m,gg),Sigma1_2(m,gg)
                     end do
             end do
         end do
@@ -271,13 +348,13 @@ write(out,'(/,a,f12.6)') "k-effective = ", keff
 
 
     subroutine Power_iteration(out,I,J,K,M,G,dx,dy,mu,eta,w,SigmaT,SigmaA,Sigma1_2,nuSigmaF, &
-                            material,tol,maxiter,tolk,maxouter,phi,keff)
+                            material,toli,maxinner,tolo,maxouter,phi,keff)
     implicit none
-    integer, intent(in) :: out,I,J,K,M,G,maxiter,maxouter
+    integer, intent(in) :: out,I,J,K,M,G,maxinner,maxouter
     real, intent(in) :: dx(:),dy(:),mu(:),eta(:),w(:)
     real, intent(in) :: SigmaT(:,:),SigmaA(:,:),Sigma1_2(:,:),nuSigmaF(:,:)
     integer, intent(in) :: material(:,:)
-    real, intent(in) :: tol,tolk
+    real, intent(in) :: toli,tolo
     real, intent(inout) :: phi(:,:,:)
     real, intent(out) :: keff
     real, allocatable :: SigmaS_self(:,:), q(:,:), Fsrc(:,:), chi(:)
@@ -327,7 +404,7 @@ write(out,'(/,a,f12.6)') "k-effective = ", keff
                 end do
             end do
             call inner(out,I,J,K,M,dx,dy,mu,eta,w,SigmaT(:,gg),SigmaS_self(:,gg),material,q, &
-           maxiter,tol,phi(:,:,gg),.false.,BCL,BCR,BCB,BCT)
+           maxinner,toli,phi(:,:,gg),.false.,BCL,BCR,BCB,BCT)
         end do
 
         !Updated fission source and k
@@ -347,7 +424,7 @@ write(out,'(/,a,f12.6)') "k-effective = ", keff
 
         write(out,'(a,i5,a,f12.6,a,es12.5)') "Outer iteration ", outer, "  k = ", keff, "  diff = ", diffk
 
-        if (diffk <= tolk) then
+        if (diffk <= tolo) then
             write(out,'(/,a)') "Power iteration converged successfully."
             write(out,'(a,i6)') "Outer iterations consumed:", outer
             exit
@@ -362,7 +439,7 @@ write(out,'(/,a,f12.6)') "k-effective = ", keff
 end subroutine Power_iteration
 
 
-   subroutine inner(out,I,J,K,M,dx,dy,mu,eta,w,SigmaT,SigmaS,material,source,maxiter,tol,phi,verbose, &
+   subroutine inner(out,I,J,K,M,dx,dy,mu,eta,w,SigmaT,SigmaS,material,source,maxinner,toli,phi,verbose, &
                   BCL,BCR,BCB,BCT)
     implicit none
     !Input:
@@ -376,7 +453,7 @@ end subroutine Power_iteration
     !SigmaS - self-scatter X/S for this group
     !material - material map
     !source - fixed source in each material cell
-    !tol - convergence criterion
+    !toli - convergence criterion
     !BCL,BCR,BCB,BCT - boundary flags, 0 = vacuum, 1 = reflective
 
     !Output:
@@ -386,8 +463,8 @@ end subroutine Power_iteration
     real, intent(in) :: dx(:),dy(:),mu(:),eta(:),w(:)
     real, intent(in) :: SigmaT(:),SigmaS(:),source(:,:)
     integer, intent(in) :: material(:,:)
-    integer, intent(in) :: maxiter
-    real, intent(in) :: tol
+    integer, intent(in) :: maxinner
+    real, intent(in) :: toli
     logical, intent(in) :: verbose
     integer, intent(in) :: BCL,BCR,BCB,BCT
     real, intent(out) :: phi(:,:)
@@ -406,7 +483,7 @@ end subroutine Power_iteration
     phi_old = 0.0d0
     phi = 0.0d0
 
-    do it = 1,maxiter
+    do it = 1,maxinner
         do jj = 1,J
             do ii = 1,I
                 mm = material(ii,jj)
@@ -432,7 +509,7 @@ end subroutine Power_iteration
             end do
         end do
 
-        if (maxdiff <= tol) then
+        if (maxdiff <= toli) then
             if (verbose) then
                 write(out,'(/,a)') "Inner iterations converged successfully."
                 write(out,'(a,i6)') "Iterations consumed:", it
@@ -441,7 +518,7 @@ end subroutine Power_iteration
             exit
         end if
 
-        if (it == maxiter) then
+        if (it == maxinner) then
             if (verbose) then
                 write(out,'(/,a)') "Inner iterations terminated unsuccessfully."
                 write(out,'(a,i6)') "Iterations consumed:", it
