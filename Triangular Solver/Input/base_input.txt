@@ -1,0 +1,32 @@
+# Sample Input 
+# Input rules:
+#  1. Comment lines start with "#"
+#  2. Anything after the slash is a comment
+#  3. All input must be on a single line
+
+ncell      5 15   / row column
+h          2
+Nsn        2      / order of S_N
+
+ngroup     1	
+nmat       3
+div        1
+bc         1 1 1
+
+sigt   1  1.00 1.50 0.75
+siga   1  1.00 1.50 0.75
+nusigf 1  0.00 0.00 0.00
+sig1_2 1  0.00 0.00 0.00
+source 1  1.00 1.50 0.75  
+
+matmap                               /material map where type of material is specified by integer
+   0 0 0 0 2 2 2 0 0 0 0 0 0 0 0
+   0 0 0 1 2 2 2 2 2 2 0 0 0 0 0
+   0 0 1 1 3 3 3 2 2 2 0 0 0 0 0
+   0 1 1 1 3 3 3 2 2 2 0 0 0 0 0
+   1 1 1 1 1 1 1 2 2 2 0 0 0 0 0
+
+
+tol       1.0e-10   1.0e-10          / outer & inner
+maxiter   500     500                / outer & inner
+
