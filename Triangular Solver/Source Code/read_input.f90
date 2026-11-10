@@ -1,5 +1,5 @@
 subroutine read_input(fname,out,I,J,K,G,M,h,BCL,BCR,BCH,mu,eta,w,SigmaT,SigmaA,nuSigmaF,Sigma1_2,source, &
-        material,toli,tolo,dim,maxinner,maxouter) ! fname holds the name of the file is it supposed to open, e.g. 'dummy_input.txt'
+        material,toli,tolo,div,maxinner,maxouter,K_tot) ! fname holds the name of the file is it supposed to open, e.g. 'dummy_input.txt'
     implicit none
     character(len=*), intent(in) :: fname 
     character(len=300) :: line
@@ -7,16 +7,15 @@ subroutine read_input(fname,out,I,J,K,G,M,h,BCL,BCR,BCH,mu,eta,w,SigmaT,SigmaA,n
     logical :: ifxst
     integer :: c,ii,jj,mm,o
     integer :: in,Nsn
-    real(8) :: u8(36), e8(36), w8(36)
-
+    
     integer, intent(in) :: out
-    integer, intent(out) :: I,J,K,G,M
+    integer, intent(out) :: I,J,G,M,K, K_tot
     integer,intent(out) :: h
     integer,intent(out) :: BCL,BCR,BCH
-    real, allocatable, intent(out) :: mu(:),eta(:),w(:)
-    real, allocatable, intent(out) :: SigmaT(:,:),SigmaA(:,:),nuSigmaF(:,:),Sigma1_2(:,:),source(:,:)
+    real(8), allocatable, intent(out) :: mu(:),eta(:),w(:)
+    real(8), allocatable, intent(out) :: SigmaT(:,:),SigmaA(:,:),nuSigmaF(:,:),Sigma1_2(:,:),source(:,:)
     integer,allocatable,intent(out) :: material(:,:)
-    real, intent(out) :: toli,tolo,dim
+    real(8), intent(out) :: toli,tolo,div
     integer, intent(out) :: maxinner,maxouter
 
    !--- check if input file exists
@@ -37,22 +36,14 @@ subroutine read_input(fname,out,I,J,K,G,M,h,BCL,BCR,BCH,mu,eta,w,SigmaT,SigmaA,n
 
         if (card.eq.'ncell') then
             read (line,*) card, I, J
-        elseif (card.eq.'dim') then
-            read(line,*) card, dim
-        elseif (card.eq.'Nsn') then
-            read(line,*) card, Nsn
-            K = 3*Nsn*(Nsn+2)/4            ! directions per quadrant (S8 -> 10)
-
-            u8 = 0.0d0
-            e8 = 0.0d0
-            w8 = 0.0d0
-            call tsncon(u8,e8,w8,Nsn,K)  ! fills first K entries, weights sum to 0.25
-            allocate(mu(K),eta(K),w(K))
-            mu  = real(u8(1:K))
-            eta = real(e8(1:K))
-            w   = real(w8(1:K))
         elseif (card.eq.'h') then
             read(line,*) card, h
+        elseif (card.eq.'Nsn') then
+            read(line,*) card, Nsn
+            call hexsncon(Nsn,mu,eta,w,K_tot)  ! fills first K entries, weights sum to 0.25
+            K=K_tot/6
+        elseif (card.eq.'div') then
+            read(line,*) card, div
         elseif (card.eq.'bc') then
             read(line,*) card, BCL,BCR,BCH !BC Left, BC Right, BC Horizontal
         elseif (card.eq.'ngroup') then
@@ -84,6 +75,12 @@ subroutine read_input(fname,out,I,J,K,G,M,h,BCL,BCR,BCH,mu,eta,w,SigmaT,SigmaA,n
     300 continue 
     close(in)
 
+    
     write(out,'(a)') "Input has been read, variables assigned, matrices created"
-    write(out,'(a,i0,a,i0,a)') "Quadrature: S", Nsn, " (", K, " directions per quadrant)"
+
+    write(out,'(a,i0)') "Hexagonal Quadrature: S",Nsn
+    write(out,'(a,i0)') "Directions per sextant: ",K
+    write(out,'(a,i0)') "Total angular directions: ",K_tot
+    write(out,'(a,f12.8)') "Sum of quadrature weights: ",sum(w)
+
     end subroutine read_input
