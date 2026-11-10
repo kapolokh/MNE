@@ -53,11 +53,20 @@ do t=1,nt
         iy(3,t)=ii                   !            i+1      1---------2
     else
         !Downward triangle
+        updown(t)=2                  !Triangle            j-1   j    j+1      
+        ix(1,t)=jj                   !
+        iy(1,t)=ii+1                 !             i       3---------2       
+        ix(2,t)=jj+1                 !                      \       / 
+        iy(2,t)=ii                   !                       \     /
+        ix(3,t)=jj-1                 !                        \   /
+        iy(3,t)=ii                   !            i+1           1
+    endif
 
-
-
-
-
+    do v=1,3
+        point_id(iy(v,t),ix(v,t))=-1
+    enddo
+    
+enddo
 
 
 
