@@ -10,7 +10,7 @@ subroutine read_input(fname,out,I,J,K,G,M,h,BCL,BCR,BCH,mu,eta,w,SigmaT,SigmaA,n
     
     integer, intent(in) :: out
     integer, intent(out) :: I,J,G,M,K, K_tot
-    integer,intent(out) :: h
+    real(8),intent(out) :: h
     integer,intent(out) :: BCL,BCR,BCH
     real(8), allocatable, intent(out) :: mu(:),eta(:),w(:)
     real(8), allocatable, intent(out) :: SigmaT(:,:),SigmaA(:,:),nuSigmaF(:,:),Sigma1_2(:,:),source(:,:)
